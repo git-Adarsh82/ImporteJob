@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: job-importer-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: job-importer
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - job-importer-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: job-importer-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - job-importer-network
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: job-importer-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/job-importer?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CLIENT_URL: http://localhost:3000
+      WORKER_CONCURRENCY: 2
+      BATCH_SIZE: 50
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - job-importer-network
+    volumes:
+      - ./server/src:/app/src
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: job-importer-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    depends_on:
+      - backend
+    networks:
+      - job-importer-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  job-importer-network:
+    driver: bridge
